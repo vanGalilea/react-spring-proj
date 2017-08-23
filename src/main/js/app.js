@@ -4,8 +4,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
 import client from './client'
-// end::vars[]
+import CreateDialog from './CreateDialog'
 
+// end::vars[]
+const root = '/api'
 // tag::app[]
 class App extends React.Component {
 
@@ -14,16 +16,50 @@ class App extends React.Component {
 		this.state = {employees: []}
 	}
 
-	componentDidMount() {
-		client(
-			{
-				method: 'GET',
-				path: '/api/employees'
-			}
-		).done(response => {
-			this.setState({employees: response.entity._embedded.employees})
-		})
-	}
+    componentDidMount() {
+        this.loadFromServer(this.state.pageSize);
+    }
+
+    loadFromServer(pageSize) {
+        follow(client, root, [
+            {rel: 'employees', params: {size: pageSize}}]
+        ).then(employeeCollection => {
+            return client({
+                method: 'GET',
+                path: employeeCollection.entity._links.profile.href,
+                headers: {'Accept': 'application/schema+json'}
+            }).then(schema => {
+                this.schema = schema.entity;
+                return employeeCollection;
+            });
+        }).done(employeeCollection => {
+            this.setState({
+                employees: employeeCollection.entity._embedded.employees,
+                attributes: Object.keys(this.schema.properties),
+                pageSize: pageSize,
+                links: employeeCollection.entity._links});
+        })
+    }
+
+    onCreate(newEmployee) {
+        follow(client, root, ['employees']).then(employeeCollection => {
+            return client({
+                method: 'POST',
+                path: employeeCollection.entity._links.self.href,
+                entity: newEmployee,
+                headers: {'Content-Type': 'application/json'}
+            })
+        }).then(response => {
+            return follow(client, root, [
+                {rel: 'employees', params: {'size': this.state.pageSize}}]);
+        }).done(response => {
+            if (typeof response.entity._links.last != "undefined") {
+                this.onNavigate(response.entity._links.last.href);
+            } else {
+                this.onNavigate(response.entity._links.self.href);
+            }
+        });
+    }
 
 	render() {
 		return (

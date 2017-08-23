@@ -67,6 +67,10 @@
 	
 	var _client2 = _interopRequireDefault(_client);
 	
+	var _CreateDialog = __webpack_require__(!(function webpackMissingModule() { var e = new Error("Cannot find module \"./CreateDialog\""); e.code = 'MODULE_NOT_FOUND'; throw e; }()));
+	
+	var _CreateDialog2 = _interopRequireDefault(_CreateDialog);
+	
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -76,40 +80,78 @@
 	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 	
 	// end::vars[]
-	
+	var root = '/api';
 	// tag::app[]
+	
 	var App = function (_React$Component) {
-		_inherits(App, _React$Component);
+	  _inherits(App, _React$Component);
 	
-		function App(props) {
-			_classCallCheck(this, App);
+	  function App(props) {
+	    _classCallCheck(this, App);
 	
-			var _this = _possibleConstructorReturn(this, (App.__proto__ || Object.getPrototypeOf(App)).call(this, props));
+	    var _this = _possibleConstructorReturn(this, (App.__proto__ || Object.getPrototypeOf(App)).call(this, props));
 	
-			_this.state = { employees: [] };
-			return _this;
-		}
+	    _this.state = { employees: [] };
+	    return _this;
+	  }
 	
-		_createClass(App, [{
-			key: 'componentDidMount',
-			value: function componentDidMount() {
-				var _this2 = this;
+	  _createClass(App, [{
+	    key: 'componentDidMount',
+	    value: function componentDidMount() {
+	      this.loadFromServer(this.state.pageSize);
+	    }
+	  }, {
+	    key: 'loadFromServer',
+	    value: function loadFromServer(pageSize) {
+	      var _this2 = this;
 	
-				(0, _client2.default)({
-					method: 'GET',
-					path: '/api/employees'
-				}).done(function (response) {
-					_this2.setState({ employees: response.entity._embedded.employees });
-				});
-			}
-		}, {
-			key: 'render',
-			value: function render() {
-				return _react2.default.createElement(EmployeeList, { employees: this.state.employees });
-			}
-		}]);
+	      follow(_client2.default, root, [{ rel: 'employees', params: { size: pageSize } }]).then(function (employeeCollection) {
+	        return (0, _client2.default)({
+	          method: 'GET',
+	          path: employeeCollection.entity._links.profile.href,
+	          headers: { 'Accept': 'application/schema+json' }
+	        }).then(function (schema) {
+	          _this2.schema = schema.entity;
+	          return employeeCollection;
+	        });
+	      }).done(function (employeeCollection) {
+	        _this2.setState({
+	          employees: employeeCollection.entity._embedded.employees,
+	          attributes: Object.keys(_this2.schema.properties),
+	          pageSize: pageSize,
+	          links: employeeCollection.entity._links });
+	      });
+	    }
+	  }, {
+	    key: 'onCreate',
+	    value: function onCreate(newEmployee) {
+	      var _this3 = this;
 	
-		return App;
+	      follow(_client2.default, root, ['employees']).then(function (employeeCollection) {
+	        return (0, _client2.default)({
+	          method: 'POST',
+	          path: employeeCollection.entity._links.self.href,
+	          entity: newEmployee,
+	          headers: { 'Content-Type': 'application/json' }
+	        });
+	      }).then(function (response) {
+	        return follow(_client2.default, root, [{ rel: 'employees', params: { 'size': _this3.state.pageSize } }]);
+	      }).done(function (response) {
+	        if (typeof response.entity._links.last != "undefined") {
+	          _this3.onNavigate(response.entity._links.last.href);
+	        } else {
+	          _this3.onNavigate(response.entity._links.self.href);
+	        }
+	      });
+	    }
+	  }, {
+	    key: 'render',
+	    value: function render() {
+	      return _react2.default.createElement(EmployeeList, { employees: this.state.employees });
+	    }
+	  }]);
+	
+	  return App;
 	}(_react2.default.Component);
 	// end::app[]
 	
@@ -117,52 +159,52 @@
 	
 	
 	var EmployeeList = function (_React$Component2) {
-		_inherits(EmployeeList, _React$Component2);
+	  _inherits(EmployeeList, _React$Component2);
 	
-		function EmployeeList() {
-			_classCallCheck(this, EmployeeList);
+	  function EmployeeList() {
+	    _classCallCheck(this, EmployeeList);
 	
-			return _possibleConstructorReturn(this, (EmployeeList.__proto__ || Object.getPrototypeOf(EmployeeList)).apply(this, arguments));
-		}
+	    return _possibleConstructorReturn(this, (EmployeeList.__proto__ || Object.getPrototypeOf(EmployeeList)).apply(this, arguments));
+	  }
 	
-		_createClass(EmployeeList, [{
-			key: 'render',
-			value: function render() {
-				var employees = this.props.employees.map(function (employee) {
-					return _react2.default.createElement(Employee, _extends({ key: employee._links.self.href }, employee));
-				});
-				return _react2.default.createElement(
-					'table',
-					null,
-					_react2.default.createElement(
-						'tbody',
-						null,
-						_react2.default.createElement(
-							'tr',
-							null,
-							_react2.default.createElement(
-								'th',
-								null,
-								'First Name'
-							),
-							_react2.default.createElement(
-								'th',
-								null,
-								'Last Name'
-							),
-							_react2.default.createElement(
-								'th',
-								null,
-								'Description'
-							)
-						),
-						employees
-					)
-				);
-			}
-		}]);
+	  _createClass(EmployeeList, [{
+	    key: 'render',
+	    value: function render() {
+	      var employees = this.props.employees.map(function (employee) {
+	        return _react2.default.createElement(Employee, _extends({ key: employee._links.self.href }, employee));
+	      });
+	      return _react2.default.createElement(
+	        'table',
+	        null,
+	        _react2.default.createElement(
+	          'tbody',
+	          null,
+	          _react2.default.createElement(
+	            'tr',
+	            null,
+	            _react2.default.createElement(
+	              'th',
+	              null,
+	              'First Name'
+	            ),
+	            _react2.default.createElement(
+	              'th',
+	              null,
+	              'Last Name'
+	            ),
+	            _react2.default.createElement(
+	              'th',
+	              null,
+	              'Description'
+	            )
+	          ),
+	          employees
+	        )
+	      );
+	    }
+	  }]);
 	
-		return EmployeeList;
+	  return EmployeeList;
 	}(_react2.default.Component);
 	// end::employee-list[]
 	
@@ -170,40 +212,40 @@
 	
 	
 	var Employee = function (_React$Component3) {
-		_inherits(Employee, _React$Component3);
+	  _inherits(Employee, _React$Component3);
 	
-		function Employee() {
-			_classCallCheck(this, Employee);
+	  function Employee() {
+	    _classCallCheck(this, Employee);
 	
-			return _possibleConstructorReturn(this, (Employee.__proto__ || Object.getPrototypeOf(Employee)).apply(this, arguments));
-		}
+	    return _possibleConstructorReturn(this, (Employee.__proto__ || Object.getPrototypeOf(Employee)).apply(this, arguments));
+	  }
 	
-		_createClass(Employee, [{
-			key: 'render',
-			value: function render() {
-				return _react2.default.createElement(
-					'tr',
-					null,
-					_react2.default.createElement(
-						'td',
-						null,
-						this.props.firstName
-					),
-					_react2.default.createElement(
-						'td',
-						null,
-						this.props.lastName
-					),
-					_react2.default.createElement(
-						'td',
-						null,
-						this.props.description
-					)
-				);
-			}
-		}]);
+	  _createClass(Employee, [{
+	    key: 'render',
+	    value: function render() {
+	      return _react2.default.createElement(
+	        'tr',
+	        null,
+	        _react2.default.createElement(
+	          'td',
+	          null,
+	          this.props.firstName
+	        ),
+	        _react2.default.createElement(
+	          'td',
+	          null,
+	          this.props.lastName
+	        ),
+	        _react2.default.createElement(
+	          'td',
+	          null,
+	          this.props.description
+	        )
+	      );
+	    }
+	  }]);
 	
-		return Employee;
+	  return Employee;
 	}(_react2.default.Component);
 	// end::employee[]
 	
@@ -23673,7 +23715,7 @@
   \***************************/
 /***/ (function(module, exports, __webpack_require__) {
 
-	var require;var __WEBPACK_AMD_DEFINE_RESULT__;/* WEBPACK VAR INJECTION */(function(process) {/** @license MIT License (c) copyright 2010-2014 original author or authors */
+	var __WEBPACK_AMD_DEFINE_RESULT__;var require;/* WEBPACK VAR INJECTION */(function(process) {/** @license MIT License (c) copyright 2010-2014 original author or authors */
 	/** @author Brian Cavalier */
 	/** @author John Hann */
 	
