@@ -5,6 +5,7 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import client from './client'
 import follow from './follow' // function to hop multiple links by "rel"
+import when from 'when'
 
 // end::vars[]
 const root = '/api'
@@ -18,6 +19,7 @@ class App extends React.Component {
         this.onNavigate = this.onNavigate.bind(this)
         this.updatePageSize = this.updatePageSize.bind(this)
         this.onDelete = this.onDelete.bind(this)
+        this.onUpdate = this.onUpdate.bind(this)
 	}
 
     componentDidMount() {
@@ -34,15 +36,26 @@ class App extends React.Component {
                 headers: {'Accept': 'application/schema+json'}
             }).then(schema => {
                 this.schema = schema.entity;
+                this.links = employeeCollection.entity._links;
                 return employeeCollection;
             });
-        }).done(employeeCollection => {
+        }).then(employeeCollection => {
+            return employeeCollection.entity._embedded.employees.map(employee =>
+                client({
+                    method: 'GET',
+                    path: employee._links.self.href
+                })
+            );
+        }).then(employeePromises => {
+            return when.all(employeePromises);
+        }).done(employees => {
             this.setState({
-                employees: employeeCollection.entity._embedded.employees,
+                employees: employees,
                 attributes: Object.keys(this.schema.properties),
                 pageSize: pageSize,
-                links: employeeCollection.entity._links});
-        })
+                links: this.links
+            });
+        });
     }
 
     onCreate(newEmployee) {
@@ -88,6 +101,25 @@ class App extends React.Component {
         }
     }
 
+    onUpdate(employee, updatedEmployee) {
+        client({
+            method: 'PUT',
+            path: employee.entity._links.self.href,
+            entity: updatedEmployee,
+            headers: {
+                'Content-Type': 'application/json',
+                'If-Match': employee.headers.Etag
+            }
+        }).done(response => {
+            this.loadFromServer(this.state.pageSize);
+        }, response => {
+            if (response.status.code === 412) {
+                alert('DENIED: Unable to update ' +
+                    employee.entity._links.self.href + '. Your copy is stale.');
+            }
+        });
+    }
+
 	render() {
  		return (
  			<div>
@@ -99,7 +131,9 @@ class App extends React.Component {
                               onDelete={this.onDelete}
                               onNavigate={this.onNavigate}
                               pageSize={this.state.pageSize}
-                              updatePageSize={this.updatePageSize} />
+                              updatePageSize={this.updatePageSize}
+                              onUpdate={this.onUpdate}
+                              attributes={this.state.attributes} />
 			</div>
 		)
 	}
@@ -150,7 +184,11 @@ class EmployeeList extends React.Component{
 
     render() {
         var employees = this.props.employees.map(employee =>
-			<Employee key={employee._links.self.href} employee={employee} onDelete={this.props.onDelete}/>
+			<Employee key={employee.entity._links.self.href}
+                      employee={employee}
+                      onDelete={this.props.onDelete}
+                      onUpdate={this.props.onUpdate}
+                      attributes={this.props.attributes}/>
         );
 
         var navLinks = [];
@@ -192,6 +230,7 @@ class EmployeeList extends React.Component{
 
 // tag::employee[]
 class Employee extends React.Component {
+
     constructor(props) {
         super(props);
         this.handleDelete = this.handleDelete.bind(this);
@@ -204,9 +243,14 @@ class Employee extends React.Component {
     render() {
         return (
             <tr>
-                <td>{this.props.employee.firstName}</td>
-                <td>{this.props.employee.lastName}</td>
-                <td>{this.props.employee.description}</td>
+                <td>{this.props.employee.entity.firstName}</td>
+                <td>{this.props.employee.entity.lastName}</td>
+                <td>{this.props.employee.entity.description}</td>
+                <td>
+                    <UpdateDialog employee={this.props.employee}
+                                  attributes={this.props.attributes}
+                                  onUpdate={this.props.onUpdate} />
+                </td>
                 <td>
                     <button onClick={this.handleDelete}>Delete</button>
                 </td>
@@ -268,6 +312,55 @@ class CreateDialog extends React.Component {
     }
 
 }
+
+class UpdateDialog extends React.Component {
+
+    constructor(props) {
+        super(props);
+        this.handleSubmit = this.handleSubmit.bind(this);
+    }
+
+    handleSubmit(e) {
+        e.preventDefault();
+        var updatedEmployee = {};
+        this.props.attributes.forEach(attribute => {
+            updatedEmployee[attribute] = ReactDOM.findDOMNode(this.refs[attribute]).value.trim();
+        });
+        this.props.onUpdate(this.props.employee, updatedEmployee);
+        window.location = "#";
+    }
+
+    render() {
+        var inputs = this.props.attributes.map(attribute =>
+            <p key={this.props.employee.entity[attribute]}>
+                <input type="text" placeholder={attribute}
+                       defaultValue={this.props.employee.entity[attribute]}
+                       ref={attribute} className="field" />
+            </p>
+        );
+
+        var dialogId = "updateEmployee-" + this.props.employee.entity._links.self.href;
+
+        return (
+            <div key={this.props.employee.entity._links.self.href}>
+                <a href={"#" + dialogId}>Update</a>
+                <div id={dialogId} className="modalDialog">
+                    <div>
+                        <a href="#" title="Close" className="close">X</a>
+
+                        <h2>Update an employee</h2>
+
+                        <form>
+                            {inputs}
+                            <button onClick={this.handleSubmit}>Update</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+};
 
 // tag::render[]
 ReactDOM.render(

@@ -66,15 +66,18 @@
 	
 	var _follow2 = _interopRequireDefault(_follow);
 	
+	var _when = __webpack_require__(190);
+	
+	var _when2 = _interopRequireDefault(_when);
+	
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 	
 	function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 	
-	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+	function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; } // function to hop multiple links by "rel"
 	
-	// function to hop multiple links by "rel"
 	
 	// end::vars[]
 	var root = '/api';
@@ -93,6 +96,7 @@
 	        _this.onNavigate = _this.onNavigate.bind(_this);
 	        _this.updatePageSize = _this.updatePageSize.bind(_this);
 	        _this.onDelete = _this.onDelete.bind(_this);
+	        _this.onUpdate = _this.onUpdate.bind(_this);
 	        return _this;
 	    }
 	
@@ -113,14 +117,25 @@
 	                    headers: { 'Accept': 'application/schema+json' }
 	                }).then(function (schema) {
 	                    _this2.schema = schema.entity;
+	                    _this2.links = employeeCollection.entity._links;
 	                    return employeeCollection;
 	                });
-	            }).done(function (employeeCollection) {
+	            }).then(function (employeeCollection) {
+	                return employeeCollection.entity._embedded.employees.map(function (employee) {
+	                    return (0, _client2.default)({
+	                        method: 'GET',
+	                        path: employee._links.self.href
+	                    });
+	                });
+	            }).then(function (employeePromises) {
+	                return _when2.default.all(employeePromises);
+	            }).done(function (employees) {
 	                _this2.setState({
-	                    employees: employeeCollection.entity._embedded.employees,
+	                    employees: employees,
 	                    attributes: Object.keys(_this2.schema.properties),
 	                    pageSize: pageSize,
-	                    links: employeeCollection.entity._links });
+	                    links: _this2.links
+	                });
 	            });
 	        }
 	    }, {
@@ -176,6 +191,27 @@
 	            }
 	        }
 	    }, {
+	        key: 'onUpdate',
+	        value: function onUpdate(employee, updatedEmployee) {
+	            var _this6 = this;
+	
+	            (0, _client2.default)({
+	                method: 'PUT',
+	                path: employee.entity._links.self.href,
+	                entity: updatedEmployee,
+	                headers: {
+	                    'Content-Type': 'application/json',
+	                    'If-Match': employee.headers.Etag
+	                }
+	            }).done(function (response) {
+	                _this6.loadFromServer(_this6.state.pageSize);
+	            }, function (response) {
+	                if (response.status.code === 412) {
+	                    alert('DENIED: Unable to update ' + employee.entity._links.self.href + '. Your copy is stale.');
+	                }
+	            });
+	        }
+	    }, {
 	        key: 'render',
 	        value: function render() {
 	            return _react2.default.createElement(
@@ -189,7 +225,9 @@
 	                    onDelete: this.onDelete,
 	                    onNavigate: this.onNavigate,
 	                    pageSize: this.state.pageSize,
-	                    updatePageSize: this.updatePageSize })
+	                    updatePageSize: this.updatePageSize,
+	                    onUpdate: this.onUpdate,
+	                    attributes: this.state.attributes })
 	            );
 	        }
 	    }]);
@@ -207,14 +245,14 @@
 	    function EmployeeList(props) {
 	        _classCallCheck(this, EmployeeList);
 	
-	        var _this6 = _possibleConstructorReturn(this, (EmployeeList.__proto__ || Object.getPrototypeOf(EmployeeList)).call(this, props));
+	        var _this7 = _possibleConstructorReturn(this, (EmployeeList.__proto__ || Object.getPrototypeOf(EmployeeList)).call(this, props));
 	
-	        _this6.handleNavFirst = _this6.handleNavFirst.bind(_this6);
-	        _this6.handleNavPrev = _this6.handleNavPrev.bind(_this6);
-	        _this6.handleNavNext = _this6.handleNavNext.bind(_this6);
-	        _this6.handleNavLast = _this6.handleNavLast.bind(_this6);
-	        _this6.handleInput = _this6.handleInput.bind(_this6);
-	        return _this6;
+	        _this7.handleNavFirst = _this7.handleNavFirst.bind(_this7);
+	        _this7.handleNavPrev = _this7.handleNavPrev.bind(_this7);
+	        _this7.handleNavNext = _this7.handleNavNext.bind(_this7);
+	        _this7.handleNavLast = _this7.handleNavLast.bind(_this7);
+	        _this7.handleInput = _this7.handleInput.bind(_this7);
+	        return _this7;
 	    }
 	
 	    _createClass(EmployeeList, [{
@@ -255,10 +293,14 @@
 	    }, {
 	        key: 'render',
 	        value: function render() {
-	            var _this7 = this;
+	            var _this8 = this;
 	
 	            var employees = this.props.employees.map(function (employee) {
-	                return _react2.default.createElement(Employee, { key: employee._links.self.href, employee: employee, onDelete: _this7.props.onDelete });
+	                return _react2.default.createElement(Employee, { key: employee.entity._links.self.href,
+	                    employee: employee,
+	                    onDelete: _this8.props.onDelete,
+	                    onUpdate: _this8.props.onUpdate,
+	                    attributes: _this8.props.attributes });
 	            });
 	
 	            var navLinks = [];
@@ -346,10 +388,10 @@
 	    function Employee(props) {
 	        _classCallCheck(this, Employee);
 	
-	        var _this8 = _possibleConstructorReturn(this, (Employee.__proto__ || Object.getPrototypeOf(Employee)).call(this, props));
+	        var _this9 = _possibleConstructorReturn(this, (Employee.__proto__ || Object.getPrototypeOf(Employee)).call(this, props));
 	
-	        _this8.handleDelete = _this8.handleDelete.bind(_this8);
-	        return _this8;
+	        _this9.handleDelete = _this9.handleDelete.bind(_this9);
+	        return _this9;
 	    }
 	
 	    _createClass(Employee, [{
@@ -366,17 +408,24 @@
 	                _react2.default.createElement(
 	                    'td',
 	                    null,
-	                    this.props.employee.firstName
+	                    this.props.employee.entity.firstName
 	                ),
 	                _react2.default.createElement(
 	                    'td',
 	                    null,
-	                    this.props.employee.lastName
+	                    this.props.employee.entity.lastName
 	                ),
 	                _react2.default.createElement(
 	                    'td',
 	                    null,
-	                    this.props.employee.description
+	                    this.props.employee.entity.description
+	                ),
+	                _react2.default.createElement(
+	                    'td',
+	                    null,
+	                    _react2.default.createElement(UpdateDialog, { employee: this.props.employee,
+	                        attributes: this.props.attributes,
+	                        onUpdate: this.props.onUpdate })
 	                ),
 	                _react2.default.createElement(
 	                    'td',
@@ -408,18 +457,18 @@
 	    _createClass(CreateDialog, [{
 	        key: 'handleSubmit',
 	        value: function handleSubmit(e) {
-	            var _this10 = this;
+	            var _this11 = this;
 	
 	            e.preventDefault();
 	            var newEmployee = {};
 	            this.props.attributes.forEach(function (attribute) {
-	                newEmployee[attribute] = _reactDom2.default.findDOMNode(_this10.refs[attribute]).value.trim();
+	                newEmployee[attribute] = _reactDom2.default.findDOMNode(_this11.refs[attribute]).value.trim();
 	            });
 	            this.props.onCreate(newEmployee);
 	
 	            // clear out the dialog's inputs
 	            this.props.attributes.forEach(function (attribute) {
-	                _reactDom2.default.findDOMNode(_this10.refs[attribute]).value = '';
+	                _reactDom2.default.findDOMNode(_this11.refs[attribute]).value = '';
 	            });
 	
 	            // Navigate away from the dialog to hide it.
@@ -479,9 +528,94 @@
 	    return CreateDialog;
 	}(_react2.default.Component);
 	
+	var UpdateDialog = function (_React$Component5) {
+	    _inherits(UpdateDialog, _React$Component5);
+	
+	    function UpdateDialog(props) {
+	        _classCallCheck(this, UpdateDialog);
+	
+	        var _this12 = _possibleConstructorReturn(this, (UpdateDialog.__proto__ || Object.getPrototypeOf(UpdateDialog)).call(this, props));
+	
+	        _this12.handleSubmit = _this12.handleSubmit.bind(_this12);
+	        return _this12;
+	    }
+	
+	    _createClass(UpdateDialog, [{
+	        key: 'handleSubmit',
+	        value: function handleSubmit(e) {
+	            var _this13 = this;
+	
+	            e.preventDefault();
+	            var updatedEmployee = {};
+	            this.props.attributes.forEach(function (attribute) {
+	                updatedEmployee[attribute] = _reactDom2.default.findDOMNode(_this13.refs[attribute]).value.trim();
+	            });
+	            this.props.onUpdate(this.props.employee, updatedEmployee);
+	            window.location = "#";
+	        }
+	    }, {
+	        key: 'render',
+	        value: function render() {
+	            var _this14 = this;
+	
+	            var inputs = this.props.attributes.map(function (attribute) {
+	                return _react2.default.createElement(
+	                    'p',
+	                    { key: _this14.props.employee.entity[attribute] },
+	                    _react2.default.createElement('input', { type: 'text', placeholder: attribute,
+	                        defaultValue: _this14.props.employee.entity[attribute],
+	                        ref: attribute, className: 'field' })
+	                );
+	            });
+	
+	            var dialogId = "updateEmployee-" + this.props.employee.entity._links.self.href;
+	
+	            return _react2.default.createElement(
+	                'div',
+	                { key: this.props.employee.entity._links.self.href },
+	                _react2.default.createElement(
+	                    'a',
+	                    { href: "#" + dialogId },
+	                    'Update'
+	                ),
+	                _react2.default.createElement(
+	                    'div',
+	                    { id: dialogId, className: 'modalDialog' },
+	                    _react2.default.createElement(
+	                        'div',
+	                        null,
+	                        _react2.default.createElement(
+	                            'a',
+	                            { href: '#', title: 'Close', className: 'close' },
+	                            'X'
+	                        ),
+	                        _react2.default.createElement(
+	                            'h2',
+	                            null,
+	                            'Update an employee'
+	                        ),
+	                        _react2.default.createElement(
+	                            'form',
+	                            null,
+	                            inputs,
+	                            _react2.default.createElement(
+	                                'button',
+	                                { onClick: this.handleSubmit },
+	                                'Update'
+	                            )
+	                        )
+	                    )
+	                )
+	            );
+	        }
+	    }]);
+	
+	    return UpdateDialog;
+	}(_react2.default.Component);
+	
+	;
+	
 	// tag::render[]
-	
-	
 	_reactDom2.default.render(_react2.default.createElement(App, null), document.getElementById('react'));
 	// end::render[]
 
