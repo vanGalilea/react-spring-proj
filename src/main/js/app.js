@@ -16,6 +16,8 @@ class App extends React.Component {
         this.state = {employees: [], attributes: [], pageSize: 2, links: {}}
         this.onCreate = this.onCreate.bind(this)
         this.onNavigate = this.onNavigate.bind(this)
+        this.updatePageSize = this.updatePageSize.bind(this)
+        this.onDelete = this.onDelete.bind(this)
 	}
 
     componentDidMount() {
@@ -80,13 +82,24 @@ class App extends React.Component {
         });
     }
 
+    updatePageSize(pageSize) {
+        if (pageSize !== this.state.pageSize) {
+            this.loadFromServer(pageSize);
+        }
+    }
+
 	render() {
  		return (
  			<div>
-                <CreateDialog attributes={this.state.attributes} onCreate={this.onCreate}/>
+                <CreateDialog
+                    attributes={this.state.attributes}
+                    onCreate={this.onCreate} />
                 <EmployeeList employees={this.state.employees}
                               links={this.state.links}
-                              onNavigate={this.onNavigate} />
+                              onDelete={this.onDelete}
+                              onNavigate={this.onNavigate}
+                              pageSize={this.state.pageSize}
+                              updatePageSize={this.updatePageSize} />
 			</div>
 		)
 	}
@@ -95,6 +108,14 @@ class App extends React.Component {
 
 // tag::employee-list[]
 class EmployeeList extends React.Component{
+    constructor(props) {
+        super(props);
+        this.handleNavFirst = this.handleNavFirst.bind(this);
+        this.handleNavPrev = this.handleNavPrev.bind(this);
+        this.handleNavNext = this.handleNavNext.bind(this);
+        this.handleNavLast = this.handleNavLast.bind(this);
+        this.handleInput = this.handleInput.bind(this);
+    }
 
     handleNavFirst(e){
         e.preventDefault();
@@ -114,6 +135,17 @@ class EmployeeList extends React.Component{
     handleNavLast(e) {
         e.preventDefault();
         this.props.onNavigate(this.props.links.last.href);
+    }
+
+    handleInput(e) {
+        e.preventDefault();
+        var pageSize = ReactDOM.findDOMNode(this.refs.pageSize).value;
+        if (/^[0-9]+$/.test(pageSize)) {
+            this.props.updatePageSize(pageSize);
+        } else {
+            ReactDOM.findDOMNode(this.refs.pageSize).value =
+                pageSize.substring(0, pageSize.length - 1);
+        }
     }
 
     render() {
